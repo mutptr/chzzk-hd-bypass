@@ -1,0 +1,23 @@
+[package]
+name = "chzzk"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.82"
+axum = "0.7.5"
+regex = "1.10.4"
+reqwest = { version = "0.12.4", default-features = false, features = [
+    "http2",
+    "rustls-tls",
+    "gzip",
+    "brotli",
+] }
+tokio = { version = "1.37.0", features = ["full"] }
+tower-http = { version = "0.5.2", features = [
+    "compression-gzip",
+    "compression-deflate",
+    "compression-br",
+] }
