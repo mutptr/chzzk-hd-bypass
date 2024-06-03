@@ -43,7 +43,14 @@ async fn handler(
 
     let start = Instant::now();
 
-    let header_keys = [header::ETAG, header::CONTENT_TYPE, header::CACHE_CONTROL];
+    let header_keys = [
+        header::CONTENT_TYPE,
+        header::AGE,
+        header::CACHE_CONTROL,
+        header::DATE,
+        header::EXPIRES,
+        header::LAST_MODIFIED,
+    ];
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
             .get(reqwest::header::HeaderName::from_bytes(key.as_ref()).unwrap())
