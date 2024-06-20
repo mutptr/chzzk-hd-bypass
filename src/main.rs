@@ -13,7 +13,7 @@ use tower_http::compression::CompressionLayer;
 async fn main() {
     let client = reqwest::Client::builder()
         .user_agent(
-            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
         )
         .build()
         .unwrap();
@@ -30,14 +30,22 @@ async fn main() {
 async fn handler(
     State(client): State<reqwest::Client>,
     Path(player_link): Path<String>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
+    let user_agent = headers.get(header::USER_AGENT);
+
     let start_request = Instant::now();
-    let res = client
-        .get(format!(
-            "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}"
-        ))
-        .send()
-        .await?;
+    let req = client.get(format!(
+        "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}"
+    ));
+
+    let req = if let Some(user_agent) = user_agent {
+        req.header(header::USER_AGENT, user_agent)
+    } else {
+        req
+    };
+
+    let res = req.send().await?;
 
     println!("request {:#?}", start_request.elapsed());
 
