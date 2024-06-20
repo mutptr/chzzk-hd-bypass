@@ -1,1 +1,4 @@
 /target
+
+deploy.cmd
+build-linux.cmd
