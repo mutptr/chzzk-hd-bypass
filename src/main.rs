@@ -9,6 +9,11 @@ use regex::Regex;
 use tokio::time::Instant;
 use tower_http::compression::CompressionLayer;
 
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 #[tokio::main]
 async fn main() {
     let client = reqwest::Client::builder()
