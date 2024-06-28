@@ -6,8 +6,8 @@ use axum::{
     Router,
 };
 use regex::Regex;
+use reqwest::Client;
 use tokio::time::Instant;
-use tower_http::compression::CompressionLayer;
 
 use mimalloc::MiMalloc;
 
@@ -16,7 +16,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() {
-    let client = reqwest::Client::builder()
+    let client = Client::builder()
         .user_agent(
             "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
         )
@@ -25,7 +25,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/:player_link", get(handler))
-        .layer(CompressionLayer::new())
+        .layer(tower_http::compression::CompressionLayer::new())
         .with_state(client);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -33,7 +33,7 @@ async fn main() {
 }
 
 async fn handler(
-    State(client): State<reqwest::Client>,
+    State(client): State<Client>,
     Path(player_link): Path<String>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
