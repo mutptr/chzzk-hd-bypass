@@ -5,8 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
+use http_cache_reqwest::{Cache, CacheMode, HttpCache, HttpCacheOptions, MokaManager};
 use regex::Regex;
 use reqwest::Client;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
 
 use mimalloc::MiMalloc;
@@ -16,12 +18,13 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() {
-    let client = Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
-        )
-        .build()
-        .unwrap();
+    let client = ClientBuilder::new(Client::new())
+        .with(Cache(HttpCache {
+            mode: CacheMode::Default,
+            manager: MokaManager::default(),
+            options: HttpCacheOptions::default(),
+        }))
+        .build();
 
     let app = Router::new()
         .route("/:player_link", get(handler))
@@ -33,7 +36,7 @@ async fn main() {
 }
 
 async fn handler(
-    State(client): State<Client>,
+    State(client): State<ClientWithMiddleware>,
     Path(player_link): Path<String>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
