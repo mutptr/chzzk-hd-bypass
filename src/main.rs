@@ -77,7 +77,7 @@ async fn handler(
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|header_value| header_value.to_str().ok())
-        .map(|x| x == "application/javascript")
+        .map(|x| x == "text/javascript")
         .unwrap_or(false);
 
     let status = res.status();
