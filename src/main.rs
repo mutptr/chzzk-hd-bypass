@@ -5,7 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
-use http_cache_reqwest::{Cache, CacheMode, HttpCache, HttpCacheOptions, MokaManager};
+use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use regex::Regex;
 use reqwest::Client;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -21,7 +21,7 @@ async fn main() {
     let client = ClientBuilder::new(Client::new())
         .with(Cache(HttpCache {
             mode: CacheMode::Default,
-            manager: MokaManager::default(),
+            manager: CACacheManager::default(),
             options: HttpCacheOptions::default(),
         }))
         .build();
