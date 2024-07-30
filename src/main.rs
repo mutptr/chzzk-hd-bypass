@@ -1,13 +1,13 @@
 use axum::{
     extract::{Path, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::HeaderMap,
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use regex::Regex;
-use reqwest::Client;
+use reqwest::{header, Client, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
 
@@ -47,10 +47,9 @@ async fn handler(
         "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}"
     ));
 
-    let req = if let Some(user_agent) = user_agent {
-        req.header(header::USER_AGENT, user_agent)
-    } else {
-        req
+    let req = match user_agent {
+        Some(user_agent) => req.header(header::USER_AGENT, user_agent),
+        None => req,
     };
 
     let res = req.send().await?;
@@ -69,8 +68,8 @@ async fn handler(
     ];
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
-            .get(reqwest::header::HeaderName::from_bytes(key.as_ref()).unwrap())
-            .map(|header_value| (key, HeaderValue::from_bytes(header_value.as_ref()).unwrap()))
+            .get(&key)
+            .map(|header_value| (key, header_value.clone()))
     }));
 
     let is_javascript = res
@@ -91,11 +90,7 @@ async fn handler(
 
     println!("parse: {:#?}", start.elapsed());
 
-    Ok((
-        StatusCode::from_u16(status.as_u16()).unwrap_or_default(),
-        headers,
-        content,
-    ))
+    Ok((status, headers, content))
 }
 
 struct AppError(anyhow::Error);
