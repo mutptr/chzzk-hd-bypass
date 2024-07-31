@@ -12,12 +12,16 @@ use regex::Regex;
 use reqwest::{header, Client, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
+use tower_http::compression::CompressionLayer;
+use tracing::info;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     let client = ClientBuilder::new(Client::new())
         .with(Cache(HttpCache {
             mode: CacheMode::Default,
@@ -28,7 +32,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/:player_link", get(handler))
-        .layer(tower_http::compression::CompressionLayer::new())
+        .layer(CompressionLayer::new())
         .with_state(client);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -40,7 +44,7 @@ async fn handler(
     Path(player_link): Path<String>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let start_request = Instant::now();
+    let request = Instant::now();
     let req = client.get(format!(
         "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}"
     ));
@@ -52,9 +56,9 @@ async fn handler(
 
     let res = req.send().await?;
 
-    println!("request {:#?}", start_request.elapsed());
+    info!("request {:?}", request.elapsed());
 
-    let start = Instant::now();
+    let parse = Instant::now();
 
     let header_keys = [
         header::CONTENT_TYPE,
@@ -88,7 +92,7 @@ async fn handler(
         content
     };
 
-    println!("parse: {:#?}", start.elapsed());
+    info!("parse: {:?}", parse.elapsed());
 
     Ok((status, headers, content))
 }
