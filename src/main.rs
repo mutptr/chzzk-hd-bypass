@@ -7,12 +7,11 @@ use axum::{
 };
 use axum_extra::{headers, TypedHeader};
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
+use mimalloc::MiMalloc;
 use regex::Regex;
 use reqwest::{header, Client, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
-
-use mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
