@@ -80,13 +80,15 @@ async fn handler(
         .unwrap_or(false);
 
     let status = res.status();
-    let mut content = res.text().await?;
+    let content = res.text().await?;
 
-    if status.is_success() && is_javascript {
+    let content = if status.is_success() && is_javascript {
         // a(!0),y(null),l(t),
         let regex = Regex::new(r"(.\(!0\),.\(null\)),.\(.\),.*?case 6").unwrap();
-        content = regex.replace(&content, "$1,e.next=6;case 6").to_string();
-    }
+        regex.replace(&content, "$1,e.next=6;case 6").to_string()
+    } else {
+        content
+    };
 
     println!("parse: {:#?}", start.elapsed());
 
