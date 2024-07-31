@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 axum = "0.7.5"
+axum-extra = { version = "0.9.3", features = ["typed-header"] }
 http-cache-reqwest = "0.14.0"
 mimalloc = "0.1.43"
 regex = "1.10.5"

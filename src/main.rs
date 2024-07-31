@@ -5,6 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
+use axum_extra::{headers, TypedHeader};
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use regex::Regex;
 use reqwest::{header, Client, StatusCode};
@@ -38,17 +39,15 @@ async fn main() {
 async fn handler(
     State(client): State<ClientWithMiddleware>,
     Path(player_link): Path<String>,
-    headers: HeaderMap,
+    user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user_agent = headers.get(header::USER_AGENT);
-
     let start_request = Instant::now();
     let req = client.get(format!(
         "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}"
     ));
 
     let req = match user_agent {
-        Some(user_agent) => req.header(header::USER_AGENT, user_agent),
+        Some(user_agent) => req.header(header::USER_AGENT, user_agent.as_str()),
         None => req,
     };
 
