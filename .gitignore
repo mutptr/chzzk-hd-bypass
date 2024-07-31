@@ -1,4 +1,5 @@
 /target
 
+http-cacache
 deploy.cmd
 build-linux.cmd
