@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
-    response::{IntoResponse, Response},
+    http::{HeaderMap, HeaderName},
+    response::IntoResponse,
     routing::get,
     Router,
 };
@@ -9,18 +9,25 @@ use axum_extra::{headers, TypedHeader};
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use mimalloc::MiMalloc;
 use regex::Regex;
-use reqwest::{header, Client, StatusCode};
+use reqwest::{header, Client, IntoUrl, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
-use tower_http::compression::CompressionLayer;
-use tracing::info;
+use tower_http::{
+    compression::CompressionLayer,
+    trace::{DefaultMakeSpan, TraceLayer},
+};
+use tracing::{level_filters::LevelFilter, Level};
+use tracing_subscriber::EnvFilter;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into()))
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
+        .init();
 
     let client = ClientBuilder::new(Client::new())
         .with(Cache(HttpCache {
@@ -31,7 +38,11 @@ async fn main() {
         .build();
 
     let app = Router::new()
-        .route("/:player_link", get(handler))
+        .route("/chzzk/:player_link", get(chzzk))
+        .route("/afreecatv/liveplayer.js", get(afreecatv))
+        .layer(
+            TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().level(Level::ERROR)),
+        )
         .layer(CompressionLayer::new())
         .with_state(client);
 
@@ -39,27 +50,13 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn handler(
+async fn chzzk(
     State(client): State<ClientWithMiddleware>,
     Path(player_link): Path<String>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let request = Instant::now();
-    let req = client.get(format!(
-        "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}"
-    ));
-
-    let req = match user_agent {
-        Some(user_agent) => req.header(header::USER_AGENT, user_agent.as_str()),
-        None => req,
-    };
-
-    let res = req.send().await?;
-
-    info!("request {:?}", request.elapsed());
-
-    let parse = Instant::now();
-
+    let url =
+        format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
     let header_keys = [
         header::CONTENT_TYPE,
         header::AGE,
@@ -68,6 +65,61 @@ async fn handler(
         header::EXPIRES,
         header::LAST_MODIFIED,
     ];
+    let regex_pattern = r"(.\(!0\),.\(null\)),.\(.\),.*?case 6";
+    let replacement = "$1,e.next=6;case 6";
+
+    process(
+        &client,
+        url,
+        user_agent,
+        header_keys,
+        regex_pattern,
+        replacement,
+    )
+    .await
+}
+
+async fn afreecatv(
+    State(client): State<ClientWithMiddleware>,
+    user_agent: Option<TypedHeader<headers::UserAgent>>,
+) -> Result<impl IntoResponse, AppError> {
+    let url = "https://static.afreecatv.com/asset/app/liveplayer/player/dist/LivePlayer.js";
+    let header_keys = [header::ETAG, header::CONTENT_TYPE, header::CACHE_CONTROL];
+    let regex_pattern = r"shouldConnectToAgentForHighQuality:function\(\)\{.*?\},";
+    let replacement = "shouldConnectToAgentForHighQuality:function(){return!1},";
+
+    process(
+        &client,
+        url,
+        user_agent,
+        header_keys,
+        regex_pattern,
+        replacement,
+    )
+    .await
+}
+
+async fn process<const N: usize>(
+    client: &ClientWithMiddleware,
+    url: impl IntoUrl,
+    user_agent: Option<TypedHeader<headers::UserAgent>>,
+    header_keys: [HeaderName; N],
+    regex_pattern: impl AsRef<str>,
+    replacement: impl AsRef<str>,
+) -> Result<impl IntoResponse, AppError> {
+    let req = client.get(url);
+    let req = match user_agent {
+        Some(user_agent) => req.header(header::USER_AGENT, user_agent.as_str()),
+        None => req,
+    };
+
+    let request = Instant::now();
+    let res = req.send().await?;
+
+    tracing::info!("request {:?}", request.elapsed());
+
+    let parse = Instant::now();
+
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
             .get(&key)
@@ -76,23 +128,21 @@ async fn handler(
 
     let is_javascript = res
         .headers()
-        .get(reqwest::header::CONTENT_TYPE)
+        .get(header::CONTENT_TYPE)
         .and_then(|header_value| header_value.to_str().ok())
         .map(|x| x == "text/javascript")
         .unwrap_or(false);
-
     let status = res.status();
     let content = res.text().await?;
 
     let content = if status.is_success() && is_javascript {
-        // a(!0),y(null),l(t),
-        let regex = Regex::new(r"(.\(!0\),.\(null\)),.\(.\),.*?case 6").unwrap();
-        regex.replace(&content, "$1,e.next=6;case 6").to_string()
+        let regex = Regex::new(regex_pattern.as_ref()).unwrap();
+        regex.replace(&content, replacement.as_ref()).to_string()
     } else {
         content
     };
 
-    info!("parse: {:?}", parse.elapsed());
+    tracing::info!("parse {:?}", parse.elapsed());
 
     Ok((status, headers, content))
 }
@@ -100,7 +150,8 @@ async fn handler(
 struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
+    fn into_response(self) -> axum::response::Response {
+        tracing::error!("{}", self.0);
         (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()).into_response()
     }
 }
