@@ -108,9 +108,10 @@ async fn process<const N: usize>(
     replacement: impl AsRef<str>,
 ) -> Result<impl IntoResponse, AppError> {
     let req = client.get(url);
-    let req = match user_agent {
-        Some(user_agent) => req.header(header::USER_AGENT, user_agent.as_str()),
-        None => req,
+    let req = if let Some(user_agent) = user_agent {
+        req.header(header::USER_AGENT, user_agent.as_str())
+    } else {
+        req
     };
 
     let request_time = Instant::now();
