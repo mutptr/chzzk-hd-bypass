@@ -17,7 +17,7 @@ use tower_http::{
     trace::{DefaultMakeSpan, TraceLayer},
 };
 use tracing::{level_filters::LevelFilter, Level};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -26,7 +26,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into()))
-        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
+        .with_timer(ChronoLocal::rfc_3339())
         .init();
 
     let client = ClientBuilder::new(Client::new())
@@ -113,12 +113,12 @@ async fn process<const N: usize>(
         None => req,
     };
 
-    let request = Instant::now();
+    let request_time = Instant::now();
     let res = req.send().await?;
 
-    tracing::info!("request {:?}", request.elapsed());
+    tracing::info!("request {:?}", request_time.elapsed());
 
-    let parse = Instant::now();
+    let parse_time = Instant::now();
 
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
@@ -142,7 +142,7 @@ async fn process<const N: usize>(
         content
     };
 
-    tracing::info!("parse {:?}", parse.elapsed());
+    tracing::info!("parse {:?}", parse_time.elapsed());
 
     Ok((status, headers, content))
 }
