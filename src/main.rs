@@ -40,10 +40,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/chzzk/:player_link", get(chzzk))
         .route("/afreecatv/liveplayer.js", get(afreecatv))
+        .layer(CompressionLayer::new())
         .layer(
             TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().level(Level::ERROR)),
         )
-        .layer(CompressionLayer::new())
         .with_state(client);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
