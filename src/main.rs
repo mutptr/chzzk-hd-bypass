@@ -137,7 +137,7 @@ async fn process<const N: usize>(
     let content = res.text().await?;
 
     let content = if status.is_success() && is_javascript {
-        let regex = Regex::new(regex_pattern.as_ref()).unwrap();
+        let regex = Regex::new(regex_pattern.as_ref())?;
         regex.replace(&content, replacement.as_ref()).to_string()
     } else {
         content
