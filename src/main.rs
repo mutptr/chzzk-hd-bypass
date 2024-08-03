@@ -23,7 +23,7 @@ use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into()))
         .with_timer(ChronoLocal::rfc_3339())
@@ -46,8 +46,10 @@ async fn main() {
         .layer(CompressionLayer::new())
         .with_state(client);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
 
 async fn chzzk(
