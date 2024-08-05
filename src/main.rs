@@ -16,7 +16,7 @@ use tower_http::{
     compression::CompressionLayer,
     trace::{DefaultMakeSpan, TraceLayer},
 };
-use tracing::{level_filters::LevelFilter, Level};
+use tracing::Level;
 use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
 #[global_allocator]
@@ -24,8 +24,19 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    let default_level = if cfg!(debug_assertions) {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
+
+    let name = env!("CARGO_PKG_NAME").replace("-", "_");
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into()))
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            EnvFilter::builder()
+                .with_default_directive(Level::INFO.into())
+                .parse_lossy(format!("{name}={default_level}"))
+        }))
         .with_timer(ChronoLocal::rfc_3339())
         .init();
 
