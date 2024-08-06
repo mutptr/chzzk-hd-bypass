@@ -32,11 +32,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let name = env!("CARGO_PKG_NAME").replace("-", "_");
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::builder()
-                .with_default_directive(Level::INFO.into())
-                .parse_lossy(format!("{name}={default_level}"))
-        }))
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive(format!("{name}={default_level}").parse()?),
+        )
         .with_timer(ChronoLocal::rfc_3339())
         .init();
 
