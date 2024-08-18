@@ -63,14 +63,7 @@ async fn chzzk(
 ) -> Result<impl IntoResponse, AppError> {
     let url =
         format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
-    let header_keys = [
-        header::CONTENT_TYPE,
-        header::AGE,
-        header::CACHE_CONTROL,
-        header::DATE,
-        header::EXPIRES,
-        header::LAST_MODIFIED,
-    ];
+    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
     let regex_pattern = r"(.\(!0\),.\(null\)),.\(.\),.*?case 6";
     let replacement = "$1,e.next=6;case 6";
 
@@ -90,7 +83,7 @@ async fn afreecatv(
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
     let url = "https://static.afreecatv.com/asset/app/liveplayer/player/dist/LivePlayer.js";
-    let header_keys = [header::ETAG, header::CONTENT_TYPE, header::CACHE_CONTROL];
+    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL];
     let regex_pattern = r"shouldConnectToAgentForHighQuality:function\(\)\{.*?\},";
     let replacement = "shouldConnectToAgentForHighQuality:function(){return!1},";
 
