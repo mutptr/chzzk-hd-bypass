@@ -55,7 +55,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     )
                 })
                 .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
-                    tracing::debug!(parent: _span, _latency = %_latency);
+                    tracing::debug!(parent: _span, _latency = ?_latency);
                 }),
         )
         .with_state(client);
