@@ -85,7 +85,7 @@ async fn chzzk(
 
     process(
         &client,
-        url,
+        &url,
         user_agent,
         header_keys,
         regex_pattern,
@@ -116,13 +116,13 @@ async fn afreecatv(
 
 async fn process<const N: usize>(
     client: &ClientWithMiddleware,
-    url: impl AsRef<str>,
+    url: &str,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     header_keys: [HeaderName; N],
-    regex_pattern: impl AsRef<str>,
-    replacement: impl AsRef<str>,
+    regex_pattern: &str,
+    replacement: &str,
 ) -> Result<impl IntoResponse, AppError> {
-    let req = client.get(url.as_ref());
+    let req = client.get(url);
     let req = if let Some(user_agent) = user_agent {
         tracing::debug!(user_agent = user_agent.as_str());
         req.header(header::USER_AGENT, user_agent.as_str())
@@ -130,7 +130,7 @@ async fn process<const N: usize>(
         req
     };
 
-    tracing::debug!(url = url.as_ref(), "request");
+    tracing::debug!(url = url, "request");
     let res = req.send().await?;
     let status = res.status();
     tracing::debug!(status = %status, headers = ?res.headers(), "response");
@@ -154,10 +154,10 @@ async fn process<const N: usize>(
     let content = res.text().await?;
 
     let content = if is_success && is_javascript {
-        tracing::trace!(regex_pattern = regex_pattern.as_ref(), "Regex::new");
-        let regex = Regex::new(regex_pattern.as_ref())?;
-        tracing::trace!(replacement = replacement.as_ref(), "regex.replace");
-        regex.replace(&content, replacement.as_ref()).to_string()
+        tracing::trace!(regex_pattern = regex_pattern, "Regex::new");
+        let regex = Regex::new(regex_pattern)?;
+        tracing::trace!(replacement = replacement, "regex.replace");
+        regex.replace(&content, replacement).to_string()
     } else {
         tracing::warn!(is_success, is_javascript);
         content
