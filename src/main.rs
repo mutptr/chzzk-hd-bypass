@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, HeaderName},
-    response::IntoResponse,
+    http::{HeaderMap, HeaderName, Request},
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
@@ -11,12 +13,8 @@ use mimalloc::MiMalloc;
 use regex::Regex;
 use reqwest::{header, Client, IntoUrl, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use tokio::time::Instant;
-use tower_http::{
-    compression::CompressionLayer,
-    trace::{DefaultMakeSpan, TraceLayer},
-};
-use tracing::Level;
+use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tracing::Span;
 use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
 #[global_allocator]
@@ -24,16 +22,12 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let default_level = if cfg!(debug_assertions) {
-        Level::DEBUG
-    } else {
-        Level::INFO
-    };
-
     let name = env!("CARGO_PKG_NAME").replace("-", "_");
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::from_default_env().add_directive(format!("{name}={default_level}").parse()?),
+            EnvFilter::builder()
+                .with_default_directive(format!("{name}=debug").parse()?)
+                .from_env_lossy(),
         )
         .with_timer(ChronoLocal::rfc_3339())
         .init();
@@ -49,9 +43,20 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/chzzk/:player_link", get(chzzk))
         .route("/afreecatv/liveplayer.js", get(afreecatv))
+        .route("/err", get(err))
         .layer(CompressionLayer::new())
         .layer(
-            TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().level(Level::ERROR)),
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &Request<_>| {
+                    tracing::info_span!(
+                        "request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                    )
+                })
+                .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
+                    tracing::debug!(parent: _span, _latency = %_latency);
+                }),
         )
         .with_state(client);
 
@@ -59,6 +64,11 @@ async fn main() -> Result<(), anyhow::Error> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn err() -> Result<StatusCode, AppError> {
+    tracing::error!("Handler");
+    Err(anyhow::anyhow!("WHAT").into())
 }
 
 async fn chzzk(
@@ -120,49 +130,52 @@ async fn process<const N: usize>(
 ) -> Result<impl IntoResponse, AppError> {
     let req = client.get(url);
     let req = if let Some(user_agent) = user_agent {
+        tracing::debug!(user_agent = user_agent.as_str());
         req.header(header::USER_AGENT, user_agent.as_str())
     } else {
         req
     };
 
-    let request_time = Instant::now();
+    tracing::trace!("request send");
     let res = req.send().await?;
+    let status = res.status();
+    let response_headers = res.headers();
 
-    tracing::info!("request {:?}", request_time.elapsed());
-
-    let parse_time = Instant::now();
+    tracing::trace!(%status, ?response_headers);
 
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
-        res.headers()
+        response_headers
             .get(&key)
             .map(|header_value| (key, header_value.clone()))
     }));
+    tracing::debug!(?headers);
 
-    let is_javascript = res
-        .headers()
+    let is_success = status.is_success();
+    let is_javascript = response_headers
         .get(header::CONTENT_TYPE)
         .and_then(|header_value| header_value.to_str().ok())
         .map(|x| x == "text/javascript")
         .unwrap_or(false);
-    let status = res.status();
+
     let content = res.text().await?;
 
-    let content = if status.is_success() && is_javascript {
+    let content = if is_success && is_javascript {
         let regex = Regex::new(regex_pattern.as_ref())?;
+        tracing::trace!("regex replace");
         regex.replace(&content, replacement.as_ref()).to_string()
     } else {
+        tracing::warn!(is_success, is_javascript);
         content
     };
 
-    tracing::info!("parse {:?}", parse_time.elapsed());
-
+    tracing::trace!("response to client");
     Ok((status, headers, content))
 }
 
 struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
-    fn into_response(self) -> axum::response::Response {
+    fn into_response(self) -> Response {
         tracing::error!("{}", self.0);
         (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()).into_response()
     }
