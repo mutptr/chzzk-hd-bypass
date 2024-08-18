@@ -11,7 +11,7 @@ use axum_extra::{headers, TypedHeader};
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use mimalloc::MiMalloc;
 use regex::Regex;
-use reqwest::{header, Client, IntoUrl, StatusCode};
+use reqwest::{header, Client, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 use tracing::Span;
@@ -116,13 +116,13 @@ async fn afreecatv(
 
 async fn process<const N: usize>(
     client: &ClientWithMiddleware,
-    url: impl IntoUrl,
+    url: impl AsRef<str>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     header_keys: [HeaderName; N],
     regex_pattern: impl AsRef<str>,
     replacement: impl AsRef<str>,
 ) -> Result<impl IntoResponse, AppError> {
-    let req = client.get(url);
+    let req = client.get(url.as_ref());
     let req = if let Some(user_agent) = user_agent {
         tracing::debug!(user_agent = user_agent.as_str());
         req.header(header::USER_AGENT, user_agent.as_str())
@@ -130,32 +130,33 @@ async fn process<const N: usize>(
         req
     };
 
-    tracing::trace!("request send");
+    tracing::debug!(url = url.as_ref(), "request");
     let res = req.send().await?;
     let status = res.status();
-    let response_headers = res.headers();
-
-    tracing::trace!(%status, ?response_headers);
+    tracing::debug!(status = %status, headers = ?res.headers(), "response");
 
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
-        response_headers
+        res.headers()
             .get(&key)
             .map(|header_value| (key, header_value.clone()))
     }));
-    tracing::debug!(?headers);
+    tracing::trace!(?headers);
 
     let is_success = status.is_success();
-    let is_javascript = response_headers
+    let is_javascript = res
+        .headers()
         .get(header::CONTENT_TYPE)
         .and_then(|header_value| header_value.to_str().ok())
         .map(|x| x == "text/javascript")
         .unwrap_or(false);
 
+    tracing::trace!("res.text");
     let content = res.text().await?;
 
     let content = if is_success && is_javascript {
+        tracing::trace!(regex_pattern = regex_pattern.as_ref(), "Regex::new");
         let regex = Regex::new(regex_pattern.as_ref())?;
-        tracing::trace!("regex replace");
+        tracing::trace!(replacement = replacement.as_ref(), "regex.replace");
         regex.replace(&content, replacement.as_ref()).to_string()
     } else {
         tracing::warn!(is_success, is_javascript);
