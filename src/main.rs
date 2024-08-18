@@ -43,7 +43,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/chzzk/:player_link", get(chzzk))
         .route("/afreecatv/liveplayer.js", get(afreecatv))
-        .route("/err", get(err))
         .layer(CompressionLayer::new())
         .layer(
             TraceLayer::new_for_http()
@@ -64,11 +63,6 @@ async fn main() -> Result<(), anyhow::Error> {
     axum::serve(listener, app).await?;
 
     Ok(())
-}
-
-async fn err() -> Result<StatusCode, AppError> {
-    tracing::error!("Handler");
-    Err(anyhow::anyhow!("WHAT").into())
 }
 
 async fn chzzk(
