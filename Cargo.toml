@@ -9,7 +9,6 @@ edition = "2021"
 anyhow = "1.0.86"
 axum = "0.7.5"
 axum-extra = { version = "0.9.3", features = ["typed-header"] }
-http-cache-reqwest = "0.14.0"
 mimalloc = "0.1.43"
 regex = "1.10.5"
 reqwest = { version = "0.12.5", default-features = false, features = [
@@ -20,8 +19,7 @@ reqwest = { version = "0.12.5", default-features = false, features = [
     "zstd",
     "deflate",
 ] }
-reqwest-middleware = "0.3.2"
 tokio = { version = "1.39.2", features = ["full"] }
-tower-http = { version = "0.5.2", features = ["compression-full", "trace"] }
+tower-http = { version = "0.5.2", features = ["trace"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "chrono"] }

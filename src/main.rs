@@ -8,12 +8,10 @@ use axum::{
     Router,
 };
 use axum_extra::{headers, TypedHeader};
-use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use mimalloc::MiMalloc;
 use regex::Regex;
 use reqwest::{header, Client, StatusCode};
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tower_http::trace::TraceLayer;
 use tracing::Span;
 use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
@@ -32,18 +30,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_timer(ChronoLocal::rfc_3339())
         .init();
 
-    let client = ClientBuilder::new(Client::new())
-        .with(Cache(HttpCache {
-            mode: CacheMode::Default,
-            manager: CACacheManager::default(),
-            options: HttpCacheOptions::default(),
-        }))
-        .build();
+    let client = Client::new();
 
     let app = Router::new()
         .route("/chzzk/:player_link", get(chzzk))
         .route("/afreecatv/liveplayer.js", get(afreecatv))
-        .layer(CompressionLayer::new())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
@@ -66,7 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn chzzk(
-    State(client): State<ClientWithMiddleware>,
+    State(client): State<Client>,
     Path(player_link): Path<String>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -95,7 +86,7 @@ async fn chzzk(
 }
 
 async fn afreecatv(
-    State(client): State<ClientWithMiddleware>,
+    State(client): State<Client>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
     let url = "https://static.afreecatv.com/asset/app/liveplayer/player/dist/LivePlayer.js";
@@ -115,7 +106,7 @@ async fn afreecatv(
 }
 
 async fn process<const N: usize>(
-    client: &ClientWithMiddleware,
+    client: &Client,
     url: &str,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     header_keys: [HeaderName; N],
