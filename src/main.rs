@@ -124,14 +124,14 @@ async fn process<const N: usize>(
     tracing::debug!(url = url, "request");
     let res = req.send().await?;
     let status = res.status();
-    tracing::debug!(status = %status, headers = ?res.headers(), "response");
+    tracing::trace!(status = %status, headers = ?res.headers(), "response");
 
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
             .get(&key)
             .map(|header_value| (key, header_value.clone()))
     }));
-    tracing::trace!(?headers);
+    tracing::debug!(?headers);
 
     let is_success = status.is_success();
     let is_javascript = res
