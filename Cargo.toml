@@ -10,8 +10,8 @@ anyhow = "1.0.86"
 axum = "0.7.5"
 axum-extra = { version = "0.9.3", features = ["typed-header"] }
 mimalloc = "0.1.43"
-regex = "1.10.5"
-reqwest = { version = "0.12.5", default-features = false, features = [
+regex = "1.10.6"
+reqwest = { version = "0.12.7", default-features = false, features = [
     "http2",
     "rustls-tls",
     "gzip",
@@ -19,7 +19,7 @@ reqwest = { version = "0.12.5", default-features = false, features = [
     "zstd",
     "deflate",
 ] }
-tokio = { version = "1.39.2", features = ["full"] }
+tokio = { version = "1.39.3", features = ["full"] }
 tower-http = { version = "0.5.2", features = ["trace"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "chrono"] }
