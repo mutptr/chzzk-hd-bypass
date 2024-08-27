@@ -8,15 +8,11 @@ use axum::{
     Router,
 };
 use axum_extra::{headers, TypedHeader};
-use mimalloc::MiMalloc;
 use regex::Regex;
 use reqwest::{header, Client, StatusCode};
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
