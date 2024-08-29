@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use axum::{
-    extract::{Path, State},
-    http::{HeaderMap, HeaderName, Request},
+    extract::{Path, Request, State},
+    http::{HeaderMap, HeaderName},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -41,7 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     )
                 })
                 .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
-                    tracing::debug!(parent: _span, _latency = ?_latency);
+                    tracing::debug!(_latency = ?_latency);
                 }),
         )
         .with_state(client);
@@ -104,23 +104,19 @@ async fn process<const N: usize>(
 ) -> Result<impl IntoResponse, AppError> {
     let req = client.get(url);
     let req = if let Some(user_agent) = user_agent {
-        tracing::debug!(user_agent = user_agent.as_str());
         req.header(header::USER_AGENT, user_agent.as_str())
     } else {
         req
     };
 
-    tracing::debug!(url = url, "request");
     let res = req.send().await?;
     let status = res.status();
-    tracing::trace!(status = %status, headers = ?res.headers(), "response");
 
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
             .get(&key)
             .map(|header_value| (key, header_value.clone()))
     }));
-    tracing::debug!(?headers);
 
     let is_success = status.is_success();
     let is_javascript = res
@@ -130,20 +126,16 @@ async fn process<const N: usize>(
         .map(|x| x == "text/javascript")
         .unwrap_or(false);
 
-    tracing::trace!("res.text");
     let content = res.text().await?;
 
     let content = if is_success && is_javascript {
-        tracing::trace!(regex_pattern = regex_pattern, "Regex::new");
         let regex = Regex::new(regex_pattern)?;
-        tracing::trace!(replacement = replacement, "regex.replace");
         regex.replace(&content, replacement).to_string()
     } else {
         tracing::warn!(is_success, is_javascript);
         content
     };
 
-    tracing::trace!("response to client");
     Ok((status, headers, content))
 }
 
@@ -151,7 +143,7 @@ struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        tracing::error!("{}", self.0);
+        tracing::error!("{:?}", self.0);
         (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()).into_response()
     }
 }
