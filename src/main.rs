@@ -16,12 +16,10 @@ use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let name = env!("CARGO_PKG_NAME").replace("-", "_");
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(format!("{name}=debug").parse()?)
-                .from_env_lossy(),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| format!("{}=debug", env!("CARGO_CRATE_NAME")).into()),
         )
         .with_timer(ChronoLocal::rfc_3339())
         .init();
