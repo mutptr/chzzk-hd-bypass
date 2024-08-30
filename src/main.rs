@@ -15,7 +15,7 @@ use tracing::Span;
 use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let name = env!("CARGO_PKG_NAME").replace("-", "_");
     tracing_subscriber::fmt()
         .with_env_filter(
