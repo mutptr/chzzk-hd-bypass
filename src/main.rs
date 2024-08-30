@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/chzzk/:player_link", get(chzzk))
         .route("/afreecatv/liveplayer.js", get(afreecatv))
-        .layer(
+        .route_layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
                     tracing::info_span!(
