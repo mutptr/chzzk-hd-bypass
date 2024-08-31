@@ -1,4 +1,4 @@
 /target
 
-/deploy.cmd
-/auto-reload.cmd
+/deploy.ps1
+/auto-reload.ps1
