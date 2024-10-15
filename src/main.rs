@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/chzzk/:player_link", get(chzzk))
-        .route("/afreecatv/liveplayer.js", get(afreecatv))
+        .route("/soop/liveplayer.js", get(soop))
         .route_layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
@@ -84,14 +84,14 @@ async fn chzzk(
     .await
 }
 
-async fn afreecatv(
+async fn soop(
     State(client): State<Client>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let url = "https://static.afreecatv.com/asset/app/liveplayer/player/dist/LivePlayer.js";
+    let url = "https://static.sooplive.co.kr/asset/app/liveplayer/player/dist/LivePlayer.js";
     let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL];
-    let regex_pattern = r"shouldConnectToAgentForHighQuality:function\(\)\{.*?\},";
-    let replacement = "shouldConnectToAgentForHighQuality:function(){return!1},";
+    let regex_pattern = r"shouldConnectToAgentForHighQuality\(\)\{.*?\},";
+    let replacement = "shouldConnectToAgentForHighQuality(){return!1},";
 
     process(
         &client,
@@ -133,7 +133,7 @@ async fn process<const N: usize>(
         .headers()
         .get(header::CONTENT_TYPE)
         .and_then(|header_value| header_value.to_str().ok())
-        .map(|x| x == "text/javascript")
+        .map(|x| x.contains("javascript"))
         .unwrap_or(false);
 
     let content = res.text().await?;
