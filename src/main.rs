@@ -83,7 +83,7 @@ async fn chzzk(
     let patterns = patterns.map(|pattern| (Regex::new(pattern.0).unwrap(), pattern.1));
 
     process(&client, &url, user_agent, header_keys, move |content| {
-        let content = patterns
+        patterns
             .iter()
             .fold(Cow::Borrowed(&content), |content, pattern| {
                 match pattern.0.replace(&content, pattern.1) {
@@ -94,15 +94,7 @@ async fn chzzk(
                     Cow::Owned(replaced) => Cow::Owned(replaced),
                 }
             })
-            .to_string();
-        // for a in arr {
-        //     content = match patterns.replace(&content, a.1) {
-        //         Cow::Borrowed(_) => content,
-        //         Cow::Owned(replaced) => Cow::Owned(replaced),
-        //     };
-        // }
-
-        Ok(content)
+            .to_string()
     })
     .await
 }
@@ -117,7 +109,7 @@ async fn soop(
     let replacement = "shouldConnectToAgentForHighQuality(){return!1},";
 
     process(&client, url, user_agent, header_keys, move |content| {
-        Ok(regex_pattern.replace(&content, replacement).to_string())
+        regex_pattern.replace(&content, replacement).to_string()
     })
     .await
 }
@@ -130,7 +122,7 @@ async fn process<F>(
     f: F,
 ) -> Result<impl IntoResponse, AppError>
 where
-    F: FnOnce(String) -> Result<String, AppError>,
+    F: FnOnce(String) -> String,
 {
     let req = client.get(url);
     let req = if let Some(user_agent) = user_agent {
@@ -159,7 +151,7 @@ where
     let content = res.text().await?;
 
     let content = if is_success && is_javascript {
-        f(content)?
+        f(content)
     } else {
         tracing::warn!(is_success, is_javascript);
         content
