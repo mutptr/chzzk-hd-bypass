@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use axum::{
     extract::{Path, Request, State},
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
                 })
                 .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
-                    tracing::debug!(_latency = ?_latency);
+                    tracing::debug!(?_latency);
                 }),
         )
         .with_state(client);
@@ -69,18 +69,41 @@ async fn chzzk(
 ) -> Result<impl IntoResponse, AppError> {
     let url =
         format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
-    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
-    let regex_pattern = r"(.\(!0\),.\(null\)),.\(.\),.*?case 6";
-    let replacement = "$1,e.next=6;case 6";
+    let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
 
-    process(
-        &client,
-        &url,
-        user_agent,
-        header_keys,
-        regex_pattern,
-        replacement,
-    )
+    let patterns = [
+        (
+            r"(.\(!0\),.\(null\)),.\(.\),.*?case 6",
+            "$1,e.next=6;case 6",
+        ),
+        (r".\.forceLowResolution", "false"),
+        (r"var .=.\.exposureAdBlockPopup(.*?)\)\},", "},"),
+    ];
+
+    let patterns = patterns.map(|pattern| (Regex::new(pattern.0).unwrap(), pattern.1));
+
+    process(&client, &url, user_agent, header_keys, move |content| {
+        let content = patterns
+            .iter()
+            .fold(Cow::Borrowed(&content), |content, pattern| {
+                match pattern.0.replace(&content, pattern.1) {
+                    Cow::Borrowed(_) => {
+                        tracing::warn!(pattern = pattern.0.to_string());
+                        content
+                    }
+                    Cow::Owned(replaced) => Cow::Owned(replaced),
+                }
+            })
+            .to_string();
+        // for a in arr {
+        //     content = match patterns.replace(&content, a.1) {
+        //         Cow::Borrowed(_) => content,
+        //         Cow::Owned(replaced) => Cow::Owned(replaced),
+        //     };
+        // }
+
+        Ok(content)
+    })
     .await
 }
 
@@ -89,29 +112,27 @@ async fn soop(
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<impl IntoResponse, AppError> {
     let url = "https://static.sooplive.co.kr/asset/app/liveplayer/player/dist/LivePlayer.js";
-    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL];
+    let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL];
     let regex_pattern = r"shouldConnectToAgentForHighQuality\(\)\{.*?\},";
     let replacement = "shouldConnectToAgentForHighQuality(){return!1},";
 
-    process(
-        &client,
-        url,
-        user_agent,
-        header_keys,
-        regex_pattern,
-        replacement,
-    )
+    process(&client, url, user_agent, header_keys, move |content| {
+        let regex = Regex::new(regex_pattern)?;
+        Ok(regex.replace(&content, replacement).to_string())
+    })
     .await
 }
 
-async fn process<const N: usize>(
+async fn process<F>(
     client: &Client,
     url: &str,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
-    header_keys: [HeaderName; N],
-    regex_pattern: &str,
-    replacement: &str,
-) -> Result<impl IntoResponse, AppError> {
+    header_keys: Vec<HeaderName>,
+    f: F,
+) -> Result<impl IntoResponse, AppError>
+where
+    F: FnOnce(String) -> Result<String, AppError>,
+{
     let req = client.get(url);
     let req = if let Some(user_agent) = user_agent {
         req.header(header::USER_AGENT, user_agent.as_str())
@@ -139,8 +160,7 @@ async fn process<const N: usize>(
     let content = res.text().await?;
 
     let content = if is_success && is_javascript {
-        let regex = Regex::new(regex_pattern)?;
-        regex.replace(&content, replacement).to_string()
+        f(content)?
     } else {
         tracing::warn!(is_success, is_javascript);
         content
