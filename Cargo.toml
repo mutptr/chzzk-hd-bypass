@@ -6,12 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.89"
-axum = "0.7.7"
-axum-extra = { version = "0.9.4", features = ["typed-header"] }
+anyhow = "1.0.94"
+axum = "0.7.9"
+axum-extra = { version = "0.9.6", features = ["typed-header"] }
 listenfd = "1.0.1"
-regex = "1.11.0"
-reqwest = { version = "0.12.8", default-features = false, features = [
+regex = "1.11.1"
+reqwest = { version = "0.12.9", default-features = false, features = [
     "http2",
     "rustls-tls",
     "gzip",
@@ -19,7 +19,7 @@ reqwest = { version = "0.12.8", default-features = false, features = [
     "zstd",
     "deflate",
 ] }
-tokio = { version = "1.40.0", features = ["full"] }
-tower-http = { version = "0.6.1", features = ["trace"] }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "chrono"] }
+tokio = { version = "1.42.0", features = ["full"] }
+tower-http = { version = "0.6.2", features = ["trace"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "chrono"] }
