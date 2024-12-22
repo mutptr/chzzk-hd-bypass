@@ -108,9 +108,19 @@ async fn soop(
     let regex_pattern = Regex::new(r"shouldConnectToAgentForHighQuality\(\)\{.*?\},")?;
     let replacement = "shouldConnectToAgentForHighQuality(){return!1},";
 
-    process(&client, url, user_agent, header_keys, move |content| {
-        regex_pattern.replace(&content, replacement).to_string()
-    })
+    process(
+        &client,
+        url,
+        user_agent,
+        header_keys,
+        move |content| match regex_pattern.replace(&content, replacement) {
+            Cow::Borrowed(_) => {
+                tracing::warn!(pattern = regex_pattern.to_string());
+                content
+            }
+            Cow::Owned(replaced) => replaced.to_string(),
+        },
+    )
     .await
 }
 
