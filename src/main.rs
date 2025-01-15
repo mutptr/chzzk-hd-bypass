@@ -1,7 +1,7 @@
-use std::{borrow::Cow, time::Duration};
+use std::borrow::Cow;
 
 use axum::{
-    extract::{Path, Request, State},
+    extract::{Path, State},
     http::{HeaderMap, HeaderName},
     response::{IntoResponse, Response},
     routing::get,
@@ -11,38 +11,21 @@ use axum_extra::{headers, TypedHeader};
 use regex::Regex;
 use reqwest::{header, Client, StatusCode};
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
-use tracing::Span;
+use tracing::Level;
 use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("{}=debug", env!("CARGO_CRATE_NAME")).into()),
-        )
-        .with_timer(ChronoLocal::rfc_3339())
+        .with_env_filter(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
+        .with_timer(ChronoLocal::new("%Y-%m-%d %H:%M:%S".to_owned()))
         .init();
 
     let client = Client::new();
 
     let app = Router::new()
-        .route("/chzzk/:player_link", get(chzzk))
+        .route("/chzzk/{player_link}", get(chzzk))
         .route("/soop/liveplayer.js", get(soop))
-        .route_layer(
-            TraceLayer::new_for_http()
-                .make_span_with(|request: &Request<_>| {
-                    tracing::info_span!(
-                        "request",
-                        method = %request.method(),
-                        uri = %request.uri(),
-                    )
-                })
-                .on_response(|_response: &Response, _latency: Duration, _span: &Span| {
-                    tracing::debug!(?_latency);
-                }),
-        )
         .with_state(client);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
@@ -153,7 +136,7 @@ where
     let content = if is_success && is_javascript {
         f(content)
     } else {
-        tracing::warn!(is_success, is_javascript);
+        tracing::error!(is_success, is_javascript);
         content
     };
 

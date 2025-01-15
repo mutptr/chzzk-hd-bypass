@@ -7,17 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.94"
-axum = "0.7.9"
-axum-extra = { version = "0.9.6", features = ["typed-header"] }
+axum = "0.8.1"
+axum-extra = { version = "0.10.0", features = ["typed-header"] }
 regex = "1.11.1"
-reqwest = { version = "0.12.9", default-features = false, features = [
-    "http2",
-    "rustls-tls",
-    "gzip",
-    "brotli",
-    "zstd",
-    "deflate",
-] }
+reqwest = { version = "0.12.9", default-features = false, features = ["http2", "rustls-tls", "gzip", "brotli", "zstd", "deflate"] }
 tokio = { version = "1.42.0", features = ["full"] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = "0.1.41"
