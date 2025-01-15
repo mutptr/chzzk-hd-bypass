@@ -78,7 +78,7 @@ async fn soop(
 ) -> Result<impl IntoResponse, AppError> {
     let url = "https://static.sooplive.co.kr/asset/app/liveplayer/player/dist/LivePlayer.js";
     let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL];
-    let regex_pattern = Regex::new(r"shouldConnectToAgentForHighQuality\(\)\{.*?\},")?;
+    let regex_pattern = Regex::new(r"shouldConnectToAgentForHighQuality\(\)\{(.*?)\},")?;
     let replacement = "shouldConnectToAgentForHighQuality(){return!1},";
 
     process(
