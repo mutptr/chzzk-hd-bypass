@@ -8,7 +8,6 @@ use axum::{
     Router,
 };
 use axum_extra::{headers, TypedHeader};
-use listenfd::ListenFd;
 use regex::Regex;
 use reqwest::{header, Client, StatusCode};
 use tokio::net::TcpListener;
@@ -46,16 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_state(client);
 
-    let mut listenfd = ListenFd::from_env();
-    let listener = match listenfd.take_tcp_listener(0)? {
-        // if we are given a tcp listener on listen fd 0, we use that one
-        Some(listener) => {
-            listener.set_nonblocking(true)?;
-            TcpListener::from_std(listener)?
-        }
-        // otherwise fall back to local listening
-        None => TcpListener::bind("0.0.0.0:3000").await?,
-    };
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
 
     axum::serve(listener, app).await?;
 
