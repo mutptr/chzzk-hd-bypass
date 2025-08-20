@@ -1,18 +1,18 @@
 use std::borrow::Cow;
 
 use axum::{
+    Router,
     extract::{Path, State},
     http::{HeaderMap, HeaderName},
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
-use axum_extra::{headers, TypedHeader};
+use axum_extra::{TypedHeader, headers};
 use regex::Regex;
-use reqwest::{header, Client, StatusCode};
+use reqwest::{Client, StatusCode, header};
 use tokio::net::TcpListener;
 use tracing::Level;
-use tracing_subscriber::{fmt::time::ChronoLocal, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt::time::ChronoLocal};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,8 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
 
     let app = Router::new()
-        .route("/chzzk/{player_link}", get(chzzk))
-        .route("/soop/liveplayer.js", get(soop))
+        .route("/{player_link}", get(chzzk))
         .with_state(client);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
@@ -55,7 +54,7 @@ async fn chzzk(
 
     let patterns = patterns.map(|pattern| (Regex::new(pattern.0).unwrap(), pattern.1));
 
-    process(&client, &url, user_agent, header_keys, move |content| {
+    process(client, url, user_agent, header_keys, move |content| {
         patterns
             .iter()
             .fold(Cow::Borrowed(&content), |content, pattern| {
@@ -72,34 +71,9 @@ async fn chzzk(
     .await
 }
 
-async fn soop(
-    State(client): State<Client>,
-    user_agent: Option<TypedHeader<headers::UserAgent>>,
-) -> Result<impl IntoResponse, AppError> {
-    let url = "https://static.sooplive.co.kr/asset/app/liveplayer/player/dist/LivePlayer.js";
-    let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL];
-    let regex_pattern = Regex::new(r"shouldConnectToAgentForHighQuality\(\)\{(.*?)\},")?;
-    let replacement = "shouldConnectToAgentForHighQuality(){return!1},";
-
-    process(
-        &client,
-        url,
-        user_agent,
-        header_keys,
-        move |content| match regex_pattern.replace(&content, replacement) {
-            Cow::Borrowed(_) => {
-                tracing::warn!(pattern = regex_pattern.to_string());
-                content
-            }
-            Cow::Owned(replaced) => replaced.to_string(),
-        },
-    )
-    .await
-}
-
 async fn process<F>(
-    client: &Client,
-    url: &str,
+    client: Client,
+    url: String,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     header_keys: Vec<HeaderName>,
     f: F,
