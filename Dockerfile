@@ -8,10 +8,10 @@ WORKDIR /app
 
 COPY --from=alpine /usr/local/bin/dumb-init /usr/local/bin/dumb-init
 
-COPY --chown=nonroot:nonroot hd-bypass ./
+COPY --chown=nonroot:nonroot chzzk ./
 
 USER nonroot
 EXPOSE 3000
 
 ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
-CMD ["/app/hd-bypass"]
+CMD ["/app/chzzk"]
