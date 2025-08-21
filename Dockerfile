@@ -1,6 +1,12 @@
 FROM alpine AS alpine
-RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.5/dumb-init_1.2.5_x86_64
-RUN chmod +x /usr/local/bin/dumb-init
+ARG DUMB_INIT_VERSION=1.2.5
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then DUMB_ARCH=x86_64; \
+    elif [ "$ARCH" = "aarch64" ]; then DUMB_ARCH=aarch64; \
+    else echo "unsupported arch: $ARCH" && exit 1; fi && \
+    wget -O /usr/local/bin/dumb-init \
+        https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_${DUMB_ARCH} && \
+    chmod +x /usr/local/bin/dumb-init
 
 FROM cgr.dev/chainguard/glibc-dynamic
 
