@@ -44,10 +44,7 @@ async fn chzzk(
     let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
 
     let patterns = [
-        (
-            r"(.\(!0\),.\(null\)),.\(.\),.*?case 6",
-            "$1,e.next=6;case 6",
-        ),
+        (r".\.p2pQuality", "[]"),
         (r".\.forceLowResolution", "false"),
         (r"var .=.\.exposureAdBlockPopup(.*?)\)\},", "},"),
     ];
