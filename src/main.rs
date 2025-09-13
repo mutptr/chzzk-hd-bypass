@@ -1,13 +1,11 @@
-use std::borrow::Cow;
-
 use axum::{
     Router,
     extract::{Path, State},
-    http::{HeaderMap, HeaderName},
     response::{IntoResponse, Response},
     routing::get,
 };
 use axum_extra::{TypedHeader, headers};
+use http::{HeaderMap, HeaderName};
 use regex::Regex;
 use reqwest::{Client, StatusCode, header};
 use tokio::net::TcpListener;
@@ -43,24 +41,23 @@ async fn chzzk(
         format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
     let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
 
-    let patterns = [
-        (r".\.p2pQuality", "[]"),
-        (r".\.forceLowResolution", "false"),
-        (r"var .=.\.exposureAdBlockPopup(.*?)\)\},", "},"),
-    ];
-
-    let patterns = patterns.map(|pattern| (Regex::new(pattern.0).unwrap(), pattern.1));
+    let combined_pattern = Regex::new(
+        r#"("p2pPath")|(.\.forceLowResolution)|(var .=.\.exposureAdBlockPopup(?:.*?)\)\},)"#,
+    )
+    .unwrap();
 
     process(client, url, user_agent, header_keys, move |content| {
-        patterns
-            .iter()
-            .fold(Cow::Borrowed(&content), |content, pattern| {
-                match pattern.0.replace(&content, pattern.1) {
-                    Cow::Borrowed(_) => {
-                        tracing::warn!(pattern = pattern.0.to_string());
-                        content
-                    }
-                    Cow::Owned(replaced) => Cow::Owned(replaced),
+        combined_pattern
+            .replace_all(&content, |caps: &regex::Captures| {
+                if caps.get(1).is_some() {
+                    "\"p2p\""
+                } else if caps.get(2).is_some() {
+                    "false"
+                } else if caps.get(3).is_some() {
+                    "},"
+                } else {
+                    tracing::warn!("Pattern");
+                    ""
                 }
             })
             .to_string()

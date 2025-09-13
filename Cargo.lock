@@ -278,6 +278,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-extra",
+ "http",
  "regex",
  "reqwest",
  "tokio",
