@@ -13,7 +13,7 @@ use tracing::Level;
 use tracing_subscriber::{EnvFilter, fmt::time::ChronoLocal};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
         .with_timer(ChronoLocal::new("%Y-%m-%d %H:%M:%S".to_owned()))
@@ -25,11 +25,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/{player_link}", get(chzzk))
         .with_state(client);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn chzzk(
