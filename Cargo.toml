@@ -5,11 +5,11 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
-axum = "0.8.7"
-axum-extra = { version = "0.12.2", features = ["typed-header"] }
+axum = "0.8.8"
+axum-extra = { version = "0.12.3", features = ["typed-header"] }
 http = "1.4.0"
 regex = "1.12.2"
-reqwest = { version = "0.12.25", default-features = false, features = ["http2", "rustls-tls", "gzip", "brotli", "zstd", "deflate"] }
+reqwest = { version = "0.12.26", default-features = false, features = ["http2", "rustls-tls", "gzip", "brotli", "zstd", "deflate"] }
 tokio = { version = "1.48.0", features = ["full"] }
-tracing = "0.1.43"
+tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "chrono"] }
