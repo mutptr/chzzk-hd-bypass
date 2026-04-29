@@ -8,10 +8,20 @@ use axum_extra::{TypedHeader, headers};
 use http::{HeaderMap, HeaderName};
 use regex::Regex;
 use reqwest::{Client, StatusCode, header};
+use std::{sync::LazyLock, time::Duration};
 use tokio::net::TcpListener;
 
+static PLAYER_PATCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"("p2pPath")|(.\.forceLowResolution)|(var .=.\.exposureAdBlockPopup(?:.*?)\)\},)"#)
+        .expect("player patch regex should compile")
+});
+
+static PLAYER_LINK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"^[A-Za-z0-9._-]+\.js$"#).expect("player link regex should compile")
+});
+
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -23,33 +33,33 @@ async fn main() {
         ))
         .init();
 
-    let client = Client::new();
+    let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
 
     let app = Router::new()
         .route("/{player_link}", get(chzzk))
         .with_state(client);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 async fn chzzk(
     State(client): State<Client>,
     Path(player_link): Path<String>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
+    if !PLAYER_LINK_PATTERN.is_match(&player_link) {
+        return Ok((StatusCode::BAD_REQUEST, "invalid player link").into_response());
+    }
+
     let url =
         format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
-    let header_keys = vec![header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
-
-    let combined_pattern = Regex::new(
-        r#"("p2pPath")|(.\.forceLowResolution)|(var .=.\.exposureAdBlockPopup(?:.*?)\)\},)"#,
-    )
-    .unwrap();
+    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
 
     process(client, url, user_agent, header_keys, move |content| {
-        combined_pattern
+        PLAYER_PATCH_PATTERN
             .replace_all(&content, |caps: &regex::Captures| {
                 if caps.get(1).is_some() {
                     "\"p2p\""
@@ -71,9 +81,9 @@ async fn process<F>(
     client: Client,
     url: String,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
-    header_keys: Vec<HeaderName>,
+    header_keys: impl IntoIterator<Item = HeaderName>,
     f: F,
-) -> Result<impl IntoResponse, AppError>
+) -> Result<Response, AppError>
 where
     F: FnOnce(String) -> String,
 {
@@ -106,11 +116,11 @@ where
     let content = if is_success && is_javascript {
         f(content)
     } else {
-        tracing::error!(is_success, is_javascript);
+        tracing::warn!(is_success, is_javascript);
         content
     };
 
-    Ok((status, headers, content))
+    Ok((status, headers, content).into_response())
 }
 
 struct AppError(anyhow::Error);
@@ -118,7 +128,7 @@ struct AppError(anyhow::Error);
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         tracing::error!("{:?}", self.0);
-        (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()).into_response()
+        (StatusCode::INTERNAL_SERVER_ERROR, "internal server error").into_response()
     }
 }
 
