@@ -9,14 +9,18 @@ use http::{HeaderMap, HeaderName};
 use regex::Regex;
 use reqwest::{Client, StatusCode, header};
 use tokio::net::TcpListener;
-use tracing::Level;
-use tracing_subscriber::{EnvFilter, fmt::time::ChronoLocal};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(Level::INFO.into()))
-        .with_timer(ChronoLocal::new("%Y-%m-%d %H:%M:%S".to_owned()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(tracing::Level::INFO.to_string())
+            }),
+        )
+        .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
+            "%Y-%m-%d %H:%M:%S".to_owned(),
+        ))
         .init();
 
     let client = Client::new();
