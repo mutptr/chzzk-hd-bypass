@@ -1,4 +1,4 @@
 /target
 /reference
 
-publish.ps1
+justfile
