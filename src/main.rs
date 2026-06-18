@@ -9,11 +9,14 @@ use http::{HeaderMap, HeaderName};
 use regex::Regex;
 use reqwest::{Client, StatusCode, header};
 use std::{sync::LazyLock, time::Duration};
+use tower_http::cors::CorsLayer;
 use tokio::net::TcpListener;
 
 static PLAYER_PATCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"("p2pPath")|(.\.forceLowResolution)|(var .=.\.exposureAdBlockPopup(?:.*?)\)\},)"#)
-        .expect("player patch regex should compile")
+    Regex::new(
+        r#"(`p2pPath`)|(forceLowResolution:!!\w+\.dab)|(?:\w+&&([\w$]+\.createElement\([\w$]+,\{confirmHandler:\w+=>\{\w+\.isTrusted))"#,
+    )
+    .expect("player patch regex should compile")
 });
 
 static PLAYER_LINK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -37,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/{player_link}", get(chzzk))
+        .layer(CorsLayer::permissive())
         .with_state(client);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
@@ -62,14 +66,14 @@ async fn chzzk(
         PLAYER_PATCH_PATTERN
             .replace_all(&content, |caps: &regex::Captures| {
                 if caps.get(1).is_some() {
-                    "\"p2p\""
+                    "`p2p`".to_string()
                 } else if caps.get(2).is_some() {
-                    "false"
-                } else if caps.get(3).is_some() {
-                    "},"
+                    "forceLowResolution:!1".to_string()
+                } else if let Some(rest) = caps.get(3) {
+                    format!("!1&&{}", rest.as_str())
                 } else {
                     tracing::warn!("Pattern");
-                    ""
+                    String::new()
                 }
             })
             .to_string()
