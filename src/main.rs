@@ -14,8 +14,8 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
 };
-use tower_http::cors::CorsLayer;
 use tokio::net::TcpListener;
+use tower_http::cors::CorsLayer;
 
 type CachedResponse = (StatusCode, HeaderMap, String);
 
@@ -41,7 +41,12 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new(tracing::Level::INFO.to_string())
+                let directives = if cfg!(debug_assertions) {
+                    concat!("info,", env!("CARGO_PKG_NAME"), "=debug")
+                } else {
+                    "info"
+                };
+                tracing_subscriber::EnvFilter::new(directives)
             }),
         )
         .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
@@ -137,7 +142,10 @@ async fn chzzk(
 
     if status.is_success() {
         let mut cache = state.cache.lock().unwrap();
-        cache.put(player_link.clone(), (status, headers.clone(), content.clone()));
+        cache.put(
+            player_link.clone(),
+            (status, headers.clone(), content.clone()),
+        );
         tracing::debug!(%player_link, %status, bytes = content.len(), "served and cached");
     } else {
         tracing::warn!(%player_link, %status, "served (not cached: non-success)");
