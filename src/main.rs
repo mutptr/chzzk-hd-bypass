@@ -77,10 +77,10 @@ async fn chzzk(
     Path(player_link): Path<String>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
 ) -> Result<Response, AppError> {
-    tracing::debug!(%player_link, has_user_agent = user_agent.is_some(), "request");
+    tracing::debug!(%player_link, has_user_agent = user_agent.is_some(), "handling request");
 
     if !PLAYER_LINK_PATTERN.is_match(&player_link) {
-        tracing::warn!(%player_link, "rejected: invalid player link");
+        tracing::warn!(%player_link, "rejecting invalid player link");
         return Ok((StatusCode::BAD_REQUEST, "invalid player link").into_response());
     }
 
@@ -89,7 +89,7 @@ async fn chzzk(
         cache.get(&player_link).cloned()
     };
     if let Some(cached) = cached {
-        tracing::debug!(%player_link, bytes = cached.2.len(), "cache hit");
+        tracing::debug!(%player_link, bytes = cached.2.len(), "serving cached response");
         return Ok(cached.into_response());
     }
 
@@ -97,7 +97,7 @@ async fn chzzk(
         format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
     let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
     let should_patch = player_link.starts_with("index-");
-    tracing::debug!(%player_link, should_patch, "cache miss, fetching upstream");
+    tracing::debug!(%player_link, should_patch, "cache miss, fetching from upstream");
 
     let log_link = player_link.clone();
     let (status, headers, content) = process(
@@ -107,7 +107,7 @@ async fn chzzk(
         header_keys,
         move |content| {
             if !should_patch {
-                tracing::debug!(player_link = %log_link, "pass-through (not an index bundle)");
+                tracing::debug!(player_link = %log_link, "passing through, not an index bundle");
                 return content;
             }
 
@@ -131,9 +131,9 @@ async fn chzzk(
                 .to_string();
 
             if p2p == 0 && low_res == 0 && popup == 0 {
-                tracing::warn!(player_link = %log_link, "no patterns matched (bundle may have changed)");
+                tracing::warn!(player_link = %log_link, "no patterns matched, bundle may have changed");
             } else {
-                tracing::info!(player_link = %log_link, p2p, low_res, popup, "patched");
+                tracing::info!(player_link = %log_link, p2p, low_res, popup, "applied patches");
             }
             patched
         },
@@ -148,7 +148,7 @@ async fn chzzk(
         );
         tracing::debug!(%player_link, %status, bytes = content.len(), "served and cached");
     } else {
-        tracing::warn!(%player_link, %status, "served (not cached: non-success)");
+        tracing::warn!(%player_link, %status, "served without caching, non-success status");
     }
 
     Ok((status, headers, content).into_response())
@@ -200,7 +200,7 @@ where
     let content = if is_success && is_javascript {
         f(content)
     } else {
-        tracing::warn!(is_success, is_javascript, "skipping patch (not successful JS)");
+        tracing::warn!(is_success, is_javascript, "skipping patch");
         content
     };
 
