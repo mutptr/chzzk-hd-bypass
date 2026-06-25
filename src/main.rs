@@ -5,11 +5,13 @@ use axum::{
     routing::get,
 };
 use axum_extra::{TypedHeader, headers};
-use http::{HeaderMap, HeaderName};
+use bytes::Bytes;
+use http::HeaderMap;
 use lru::LruCache;
 use regex::Regex;
 use reqwest::{Client, StatusCode, header};
 use std::{
+    borrow::Cow,
     num::NonZeroUsize,
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
@@ -17,12 +19,29 @@ use std::{
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-type CachedResponse = (StatusCode, HeaderMap, String);
+const LISTEN_ADDR: &str = "0.0.0.0:3000";
+const UPSTREAM_PREFIX: &str = "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/";
+const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(10);
+const CACHE_CAP: NonZeroUsize = NonZeroUsize::new(32).unwrap();
+
+struct CachedResponse {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+}
+
+type Cached = Arc<CachedResponse>;
+
+impl IntoResponse for &CachedResponse {
+    fn into_response(self) -> Response {
+        (self.status, self.headers.clone(), self.body.clone()).into_response()
+    }
+}
 
 #[derive(Clone)]
 struct AppState {
     client: Client,
-    cache: Arc<Mutex<LruCache<String, CachedResponse>>>,
+    cache: Arc<Mutex<LruCache<String, Cached>>>,
 }
 
 static PLAYER_PATCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -30,10 +49,6 @@ static PLAYER_PATCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         r#"(?-u)(`p2pPath`)|(forceLowResolution:!!\w+\.dab)|&&([\w$]+\.createElement\([\w$]+,\{confirmHandler:\w+=>\{\w+\.isTrusted)"#,
     )
     .expect("player patch regex should compile")
-});
-
-static PLAYER_LINK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"^[A-Za-z0-9._-]+\.js$"#).expect("player link regex should compile")
 });
 
 #[tokio::main]
@@ -54,10 +69,10 @@ async fn main() -> anyhow::Result<()> {
         ))
         .init();
 
-    let client = Client::builder().timeout(Duration::from_secs(10)).build()?;
+    let client = Client::builder().timeout(UPSTREAM_TIMEOUT).build()?;
     let state = AppState {
         client,
-        cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(32).unwrap()))),
+        cache: Arc::new(Mutex::new(LruCache::new(CACHE_CAP))),
     };
 
     let app = Router::new()
@@ -65,8 +80,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
-    tracing::info!("listening on 0.0.0.0:3000");
+    let listener = TcpListener::bind(LISTEN_ADDR).await?;
+    tracing::info!("listening on {}", listener.local_addr()?);
 
     axum::serve(listener, app).await?;
     Ok(())
@@ -79,7 +94,7 @@ async fn chzzk(
 ) -> Result<Response, AppError> {
     tracing::debug!(%player_link, has_user_agent = user_agent.is_some(), "handling request");
 
-    if !PLAYER_LINK_PATTERN.is_match(&player_link) {
+    if !player_link.ends_with(".js") {
         tracing::warn!(%player_link, "rejecting invalid player link");
         return Ok((StatusCode::BAD_REQUEST, "invalid player link").into_response());
     }
@@ -89,82 +104,15 @@ async fn chzzk(
         cache.get(&player_link).cloned()
     };
     if let Some(cached) = cached {
-        tracing::debug!(%player_link, bytes = cached.2.len(), "serving cached response");
+        tracing::debug!(%player_link, bytes = cached.body.len(), "serving cached response");
         return Ok(cached.into_response());
     }
 
-    let url =
-        format!("https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/{player_link}");
-    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
+    let url = format!("{UPSTREAM_PREFIX}{player_link}");
     let should_patch = player_link.starts_with("index-");
     tracing::debug!(%player_link, should_patch, "cache miss, fetching from upstream");
 
-    let log_link = player_link.clone();
-    let (status, headers, content) = process(
-        state.client,
-        url,
-        user_agent,
-        header_keys,
-        move |content| {
-            if !should_patch {
-                tracing::debug!(player_link = %log_link, "passing through, not an index bundle");
-                return content;
-            }
-
-            let (mut p2p, mut low_res, mut popup) = (0u32, 0u32, 0u32);
-            let patched = PLAYER_PATCH_PATTERN
-                .replace_all(&content, |caps: &regex::Captures| {
-                    if caps.get(1).is_some() {
-                        p2p += 1;
-                        "`p2p`".to_string()
-                    } else if caps.get(2).is_some() {
-                        low_res += 1;
-                        "forceLowResolution:!1".to_string()
-                    } else if let Some(rest) = caps.get(3) {
-                        popup += 1;
-                        format!("&&!1&&{}", rest.as_str())
-                    } else {
-                        tracing::warn!("unexpected match without a capture group");
-                        caps[0].to_string()
-                    }
-                })
-                .to_string();
-
-            if p2p == 0 && low_res == 0 && popup == 0 {
-                tracing::warn!(player_link = %log_link, "no patterns matched, bundle may have changed");
-            } else {
-                tracing::info!(player_link = %log_link, p2p, low_res, popup, "applied patches");
-            }
-            patched
-        },
-    )
-    .await?;
-
-    if status.is_success() {
-        let mut cache = state.cache.lock().unwrap();
-        cache.put(
-            player_link.clone(),
-            (status, headers.clone(), content.clone()),
-        );
-        tracing::debug!(%player_link, %status, bytes = content.len(), "served and cached");
-    } else {
-        tracing::warn!(%player_link, %status, "served without caching, non-success status");
-    }
-
-    Ok((status, headers, content).into_response())
-}
-
-async fn process<F>(
-    client: Client,
-    url: String,
-    user_agent: Option<TypedHeader<headers::UserAgent>>,
-    header_keys: impl IntoIterator<Item = HeaderName>,
-    f: F,
-) -> Result<CachedResponse, AppError>
-where
-    F: FnOnce(String) -> String,
-{
-    let req = client.get(url);
+    let req = state.client.get(&url);
     let req = if let Some(user_agent) = user_agent {
         req.header(header::USER_AGENT, user_agent.as_str())
     } else {
@@ -174,37 +122,82 @@ where
     let res = req.send().await?;
     let status = res.status();
 
+    let header_keys = [header::CONTENT_TYPE, header::CACHE_CONTROL, header::EXPIRES];
     let headers = HeaderMap::from_iter(header_keys.into_iter().filter_map(|key| {
         res.headers()
             .get(&key)
             .map(|header_value| (key, header_value.clone()))
     }));
 
-    let is_success = status.is_success();
-    let is_javascript = res
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|header_value| header_value.to_str().ok())
-        .map(|x| x.contains("javascript"))
-        .unwrap_or(false);
+    let body = res.bytes().await?;
+    tracing::debug!(%status, bytes = body.len(), "upstream response");
 
-    let content = res.text().await?;
-    tracing::debug!(
-        %status,
-        is_success,
-        is_javascript,
-        bytes = content.len(),
-        "upstream response"
-    );
-
-    let content = if is_success && is_javascript {
-        f(content)
-    } else {
-        tracing::warn!(is_success, is_javascript, "skipping patch");
-        content
+    let body = match (should_patch, status.is_success()) {
+        (true, true) => patch_player_bundle(&player_link, body),
+        (true, false) => {
+            tracing::warn!(%player_link, %status, "skipping patch, non-success status");
+            body
+        }
+        _ => body,
     };
 
-    Ok((status, headers, content))
+    let cached: Cached = Arc::new(CachedResponse {
+        status,
+        headers,
+        body,
+    });
+    if status.is_success() {
+        state
+            .cache
+            .lock()
+            .unwrap()
+            .put(player_link.clone(), cached.clone());
+        tracing::debug!(%player_link, %status, bytes = cached.body.len(), "served and cached");
+    } else {
+        tracing::warn!(%player_link, %status, "served without caching, non-success status");
+    }
+
+    Ok(cached.into_response())
+}
+
+fn patch_player_bundle(player_link: &str, body: Bytes) -> Bytes {
+    let Ok(text) = std::str::from_utf8(&body) else {
+        tracing::warn!(%player_link, "body is not valid utf-8, skipping patch");
+        return body;
+    };
+
+    let (mut p2p, mut low_res, mut popup) = (0u32, 0u32, 0u32);
+    let patched = PLAYER_PATCH_PATTERN.replace_all(text, |caps: &regex::Captures| {
+        match (caps.get(1), caps.get(2), caps.get(3)) {
+            (Some(_), _, _) => {
+                p2p += 1;
+                "`p2p`".into()
+            }
+            (_, Some(_), _) => {
+                low_res += 1;
+                "forceLowResolution:!1".into()
+            }
+            (_, _, Some(rest)) => {
+                popup += 1;
+                format!("&&!1&&{}", rest.as_str())
+            }
+            _ => {
+                tracing::warn!("unexpected match without a capture group");
+                caps[0].into()
+            }
+        }
+    });
+
+    match patched {
+        Cow::Borrowed(_) => {
+            tracing::warn!(%player_link, "no patterns matched, bundle may have changed");
+            body
+        }
+        Cow::Owned(s) => {
+            tracing::info!(%player_link, p2p, low_res, popup, "applied patches");
+            s.into()
+        }
+    }
 }
 
 struct AppError(anyhow::Error);
