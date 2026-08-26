@@ -143,15 +143,19 @@ async fn chzzk(
     State(state): State<AppState>,
     Path(player_link): Path<String>,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
+    cache_control: Option<TypedHeader<headers::CacheControl>>,
 ) -> Result<Response, AppError> {
-    tracing::debug!(%player_link, has_user_agent = user_agent.is_some(), "handling request");
+    let bypass_cache = cache_control.is_some_and(|TypedHeader(directives)| directives.no_cache());
+    tracing::debug!(%player_link, has_user_agent = user_agent.is_some(), bypass_cache, "handling request");
 
     if !player_link.ends_with(".js") {
         tracing::warn!(%player_link, "rejecting invalid player link");
         return Ok((StatusCode::BAD_REQUEST, "invalid player link").into_response());
     }
 
-    let cached = {
+    let cached = if bypass_cache {
+        None
+    } else {
         let mut cache = state.cache.lock().unwrap();
         cache.get(&player_link).cloned()
     };
@@ -162,7 +166,7 @@ async fn chzzk(
 
     let url = format!("{UPSTREAM_PREFIX}{player_link}");
     let should_patch = player_link.starts_with("index-");
-    tracing::debug!(%player_link, should_patch, "cache miss, fetching from upstream");
+    tracing::debug!(%player_link, should_patch, "fetching from upstream");
 
     let req = state.client.get(&url);
     let req = if let Some(user_agent) = user_agent {
