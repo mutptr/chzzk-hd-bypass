@@ -24,6 +24,8 @@ const UPSTREAM_PREFIX: &str = "https://ssl.pstatic.net/static/nng/glive/resource
 const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(10);
 const CACHE_CAP: NonZeroUsize = NonZeroUsize::new(32).unwrap();
 
+const RUNTIME_SCRIPT: &str = include_str!("runtime.js");
+
 struct CachedResponse {
     status: StatusCode,
     headers: HeaderMap,
@@ -50,7 +52,7 @@ struct Patch {
     replacement: &'static str,
 }
 
-static PLAYER_PATCHES: LazyLock<[Patch; 8]> = LazyLock::new(|| {
+static PLAYER_PATCHES: LazyLock<[Patch; 9]> = LazyLock::new(|| {
     [
         ("p2p", r#"(?-u)`p2pPath`"#, "`p2p`"),
         (
@@ -82,6 +84,11 @@ static PLAYER_PATCHES: LazyLock<[Patch; 8]> = LazyLock::new(|| {
             "chat_timestamp",
             r#"(?-u)(([[:alnum:]_$]+)\.createElement\(`div`,\{className:[[:alnum:]_$]+\.chatting_message\},)([[:alnum:]_$]+\.createElement\(`button`,\{type:`button`,className:[[:alnum:]_$]+\.nickname,[[:print:]]{0,240}?profileCard:([[:alnum:]_$]+)\.profile,)"#,
             "${1}$2.createElement(`span`,{style:{color:`var(--color-content-04)`,marginRight:`4px`}},new Date($4.time).toTimeString().slice(0,5)),${3}",
+        ),
+        (
+            "expose_core",
+            r#"(?-u)let ([[:alnum:]_$]+)=([[:alnum:]_$]+)\._corePlayer\?\?([[:alnum:]_$]+),"#,
+            "let $1=window.__chzzkCore=$2._corePlayer??$3,",
         ),
         (
             "no_tunnel",
@@ -232,13 +239,10 @@ fn patch_player_bundle(player_link: &str, body: Bytes) -> Bytes {
         patched = Cow::Owned(replaced);
     }
 
-    match patched {
-        Cow::Borrowed(_) => body,
-        Cow::Owned(s) => {
-            tracing::info!(%player_link, counts = counts.join(" "), "applied patches");
-            s.into()
-        }
-    }
+    tracing::info!(%player_link, counts = counts.join(" "), "applied patches");
+    let mut patched = patched.into_owned();
+    patched.push_str(RUNTIME_SCRIPT);
+    patched.into()
 }
 
 struct AppError(anyhow::Error);
