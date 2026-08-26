@@ -1,10 +1,10 @@
 FROM cgr.dev/chainguard/glibc-dynamic
 
-WORKDIR /home/nonroot
+COPY chzzk /app/chzzk
 
-COPY chzzk ./
+WORKDIR /app
 
 USER nonroot
 EXPOSE 3000
 
-ENTRYPOINT ["/home/nonroot/chzzk"]
+ENTRYPOINT ["/app/chzzk"]
