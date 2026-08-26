@@ -50,7 +50,7 @@ struct Patch {
     replacement: &'static str,
 }
 
-static PLAYER_PATCHES: LazyLock<[Patch; 4]> = LazyLock::new(|| {
+static PLAYER_PATCHES: LazyLock<[Patch; 7]> = LazyLock::new(|| {
     [
         ("p2p", r#"(?-u)`p2pPath`"#, "`p2p`"),
         (
@@ -67,6 +67,21 @@ static PLAYER_PATCHES: LazyLock<[Patch; 4]> = LazyLock::new(|| {
             "mid_ad",
             r#"(?-u)([[:alnum:]_$]+\.createElement\([[:alnum:]_$]+,\{player:[[:alnum:]_$]+,channelId:[[:alnum:]_$]+\.channelId,liveId:[[:alnum:]_$]+\.liveId,midAdsInfo:[[:alnum:]_$]+,showMidAd:)"#,
             "!1&&$1",
+        ),
+        (
+            "chat_blind_show",
+            r#"(?-u)(case [[:alnum:]_$]+\.NORMAL:([[:alnum:]_$]+)=([[:alnum:]_$]+)\.content,([[:alnum:]_$]+)=!1;break;case [[:alnum:]_$]+\.CBOTBLIND:[[:print:]]{0,200}?;break;)default:[[:alnum:]_$]+=\$t\(`live_chatting_message\.message_blinded`\),[[:alnum:]_$]+=!0;break"#,
+            "${1}default:$2=$3.content,$4=!1;break",
+        ),
+        (
+            "chat_blind_color",
+            r#"(?-u)style:\{color:([[:alnum:]_$]+)\.profile\?\.title\?\.color\}"#,
+            "style:{color:$1.status===`BLIND`?`#ff4d4f`:$1.profile?.title?.color}",
+        ),
+        (
+            "chat_timestamp",
+            r#"(?-u)(([[:alnum:]_$]+)\.createElement\(`div`,\{className:[[:alnum:]_$]+\.chatting_message\},)([[:alnum:]_$]+\.createElement\(`button`,\{type:`button`,className:[[:alnum:]_$]+\.nickname,[[:print:]]{0,240}?profileCard:([[:alnum:]_$]+)\.profile,)"#,
+            "${1}$2.createElement(`span`,{style:{color:`var(--color-content-04)`,marginRight:`4px`}},new Date($4.time).toTimeString().slice(0,5)),${3}",
         ),
     ]
     .map(|(name, pattern, replacement)| Patch {
