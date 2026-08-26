@@ -65,8 +65,8 @@ static PLAYER_PATCHES: LazyLock<[Patch; 4]> = LazyLock::new(|| {
         ),
         (
             "mid_ad",
-            r#"(?-u)!\w+\|\|!\w+\.adCount\|\|\w+\.adCount<=0"#,
-            "!0",
+            r#"(?-u)([[:alnum:]_$]+\.createElement\([[:alnum:]_$]+,\{player:[[:alnum:]_$]+,channelId:[[:alnum:]_$]+\.channelId,liveId:[[:alnum:]_$]+\.liveId,midAdsInfo:[[:alnum:]_$]+,showMidAd:)"#,
+            "!1&&$1",
         ),
     ]
     .map(|(name, pattern, replacement)| Patch {
