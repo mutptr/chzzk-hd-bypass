@@ -44,11 +44,36 @@ struct AppState {
     cache: Arc<Mutex<LruCache<String, Cached>>>,
 }
 
-static PLAYER_PATCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"(?-u)(`p2pPath`)|(forceLowResolution:!!\w+\.dab)|&&([\w$]+\.createElement\([\w$]+,\{confirmHandler:\w+=>\{\w+\.isTrusted)|(!\w+\|\|!\w+\.adCount\|\|\w+\.adCount<=0)"#,
-    )
-    .expect("player patch regex should compile")
+struct Patch {
+    name: &'static str,
+    pattern: Regex,
+    replacement: &'static str,
+}
+
+static PLAYER_PATCHES: LazyLock<[Patch; 4]> = LazyLock::new(|| {
+    [
+        ("p2p", r#"(?-u)`p2pPath`"#, "`p2p`"),
+        (
+            "low_res",
+            r#"(?-u)forceLowResolution:!!\w+\.dab"#,
+            "forceLowResolution:!1",
+        ),
+        (
+            "popup",
+            r#"(?-u)&&([\w$]+\.createElement\([\w$]+,\{confirmHandler:\w+=>\{\w+\.isTrusted)"#,
+            "&&!1&&$1",
+        ),
+        (
+            "mid_ad",
+            r#"(?-u)!\w+\|\|!\w+\.adCount\|\|\w+\.adCount<=0"#,
+            "!0",
+        ),
+    ]
+    .map(|(name, pattern, replacement)| Patch {
+        name,
+        pattern: Regex::new(pattern).expect("player patch regex should compile"),
+        replacement,
+    })
 });
 
 #[tokio::main]
@@ -166,39 +191,31 @@ fn patch_player_bundle(player_link: &str, body: Bytes) -> Bytes {
         return body;
     };
 
-    let (mut p2p, mut low_res, mut popup, mut mid_ad) = (0u32, 0u32, 0u32, 0u32);
-    let patched = PLAYER_PATCH_PATTERN.replace_all(text, |caps: &regex::Captures| {
-        match (caps.get(1), caps.get(2), caps.get(3), caps.get(4)) {
-            (Some(_), _, _, _) => {
-                p2p += 1;
-                "`p2p`".into()
-            }
-            (_, Some(_), _, _) => {
-                low_res += 1;
-                "forceLowResolution:!1".into()
-            }
-            (_, _, Some(rest), _) => {
-                popup += 1;
-                format!("&&!1&&{}", rest.as_str())
-            }
-            (_, _, _, Some(_)) => {
-                mid_ad += 1;
-                "!0".into()
-            }
-            _ => {
-                tracing::warn!("unexpected match without a capture group");
-                caps[0].into()
-            }
-        }
-    });
+    let mut patched = Cow::Borrowed(text);
+    let mut counts = Vec::with_capacity(PLAYER_PATCHES.len());
+    for patch in PLAYER_PATCHES.iter() {
+        let mut count = 0u32;
+        let replaced = patch
+            .pattern
+            .replace_all(&patched, |caps: &regex::Captures| {
+                count += 1;
+                let mut expanded = String::new();
+                caps.expand(patch.replacement, &mut expanded);
+                expanded
+            });
+
+        let Cow::Owned(replaced) = replaced else {
+            tracing::warn!(%player_link, patch = patch.name, "no match, bundle may have changed");
+            continue;
+        };
+        counts.push(format!("{}={}", patch.name, count));
+        patched = Cow::Owned(replaced);
+    }
 
     match patched {
-        Cow::Borrowed(_) => {
-            tracing::warn!(%player_link, "no patterns matched, bundle may have changed");
-            body
-        }
+        Cow::Borrowed(_) => body,
         Cow::Owned(s) => {
-            tracing::info!(%player_link, p2p, low_res, popup, mid_ad, "applied patches");
+            tracing::info!(%player_link, counts = counts.join(" "), "applied patches");
             s.into()
         }
     }
