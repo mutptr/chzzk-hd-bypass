@@ -46,7 +46,7 @@ struct AppState {
 
 static PLAYER_PATCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(?-u)(`p2pPath`)|(forceLowResolution:!!\w+\.dab)|&&([\w$]+\.createElement\([\w$]+,\{confirmHandler:\w+=>\{\w+\.isTrusted)"#,
+        r#"(?-u)(`p2pPath`)|(forceLowResolution:!!\w+\.dab)|&&([\w$]+\.createElement\([\w$]+,\{confirmHandler:\w+=>\{\w+\.isTrusted)|(!\w+\|\|!\w+\.adCount\|\|\w+\.adCount<=0)"#,
     )
     .expect("player patch regex should compile")
 });
@@ -166,20 +166,24 @@ fn patch_player_bundle(player_link: &str, body: Bytes) -> Bytes {
         return body;
     };
 
-    let (mut p2p, mut low_res, mut popup) = (0u32, 0u32, 0u32);
+    let (mut p2p, mut low_res, mut popup, mut mid_ad) = (0u32, 0u32, 0u32, 0u32);
     let patched = PLAYER_PATCH_PATTERN.replace_all(text, |caps: &regex::Captures| {
-        match (caps.get(1), caps.get(2), caps.get(3)) {
-            (Some(_), _, _) => {
+        match (caps.get(1), caps.get(2), caps.get(3), caps.get(4)) {
+            (Some(_), _, _, _) => {
                 p2p += 1;
                 "`p2p`".into()
             }
-            (_, Some(_), _) => {
+            (_, Some(_), _, _) => {
                 low_res += 1;
                 "forceLowResolution:!1".into()
             }
-            (_, _, Some(rest)) => {
+            (_, _, Some(rest), _) => {
                 popup += 1;
                 format!("&&!1&&{}", rest.as_str())
+            }
+            (_, _, _, Some(_)) => {
+                mid_ad += 1;
+                "!0".into()
             }
             _ => {
                 tracing::warn!("unexpected match without a capture group");
@@ -194,7 +198,7 @@ fn patch_player_bundle(player_link: &str, body: Bytes) -> Bytes {
             body
         }
         Cow::Owned(s) => {
-            tracing::info!(%player_link, p2p, low_res, popup, "applied patches");
+            tracing::info!(%player_link, p2p, low_res, popup, mid_ad, "applied patches");
             s.into()
         }
     }
