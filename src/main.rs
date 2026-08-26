@@ -50,7 +50,7 @@ struct Patch {
     replacement: &'static str,
 }
 
-static PLAYER_PATCHES: LazyLock<[Patch; 7]> = LazyLock::new(|| {
+static PLAYER_PATCHES: LazyLock<[Patch; 8]> = LazyLock::new(|| {
     [
         ("p2p", r#"(?-u)`p2pPath`"#, "`p2p`"),
         (
@@ -82,6 +82,11 @@ static PLAYER_PATCHES: LazyLock<[Patch; 7]> = LazyLock::new(|| {
             "chat_timestamp",
             r#"(?-u)(([[:alnum:]_$]+)\.createElement\(`div`,\{className:[[:alnum:]_$]+\.chatting_message\},)([[:alnum:]_$]+\.createElement\(`button`,\{type:`button`,className:[[:alnum:]_$]+\.nickname,[[:print:]]{0,240}?profileCard:([[:alnum:]_$]+)\.profile,)"#,
             "${1}$2.createElement(`span`,{style:{color:`var(--color-content-04)`,marginRight:`4px`}},new Date($4.time).toTimeString().slice(0,5)),${3}",
+        ),
+        (
+            "no_tunnel",
+            r#"(?-u)([[:alnum:]_$]+\.current=)Hl\(Math\.max\([[:alnum:]_$]+\?\.tr\|\|0,10\)\)"#,
+            "${1}!1",
         ),
     ]
     .map(|(name, pattern, replacement)| Patch {
