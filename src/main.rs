@@ -92,8 +92,8 @@ static PLAYER_PATCHES: LazyLock<[Patch; 9]> = LazyLock::new(|| {
         ),
         (
             "no_tunnel",
-            r#"(?-u)([[:alnum:]_$]+\.current=)Hl\(Math\.max\([[:alnum:]_$]+\?\.tr\|\|0,10\)\)"#,
-            "${1}!1",
+            r#"(?-u)=[[:alnum:]_$]+\(\)(;[[:alnum:]_$]+\?\.addEventListener\(`error`,\(\{originUrl:)"#,
+            "=void 0$1",
         ),
     ]
     .map(|(name, pattern, replacement)| Patch {
