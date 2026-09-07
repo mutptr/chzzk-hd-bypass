@@ -1,10 +1,9 @@
 FROM cgr.dev/chainguard/glibc-dynamic
 
-COPY chzzk /app/chzzk
+COPY --chmod=0555 chzzk /app/chzzk
 
 WORKDIR /app
 
-USER nonroot
 EXPOSE 3000
 
 ENTRYPOINT ["/app/chzzk"]
