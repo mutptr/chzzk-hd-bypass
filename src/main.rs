@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 let directives = if cfg!(debug_assertions) {
-                    concat!("info,", env!("CARGO_PKG_NAME"), "=debug")
+                    concat!("info,", env!("CARGO_CRATE_NAME"), "=debug")
                 } else {
                     "info"
                 };
