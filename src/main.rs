@@ -92,7 +92,7 @@ static PLAYER_PATCHES: LazyLock<[Patch; 9]> = LazyLock::new(|| {
         ),
         (
             "no_tunnel",
-            r#"(?-u)=[[:alnum:]_$]+\(\)(;[[:alnum:]_$]+\?\.addEventListener\(`error`,\(\{originUrl:)"#,
+            r#"(?-u)=[[:alnum:]_$]+\(\)([;,][[:alnum:]_$]+\?\.addEventListener\(`error`,\(\{originUrl:)"#,
             "=void 0$1",
         ),
     ]
