@@ -26,6 +26,13 @@ const CACHE_CAP: NonZeroUsize = NonZeroUsize::new(32).unwrap();
 
 const RUNTIME_SCRIPT: &str = include_str!("runtime.js");
 
+static SHARED_MODULE_IMPORTS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?-u)(\bfrom\s*|\bimport\s*(?:\(\s*)?)(["'`])\./((?:rolldown-runtime|vendor|common-vendor|player-vendor|date-vendor)-[[:alnum:]_-]+\.js)(["'`])"#,
+    )
+    .expect("shared module import regex should compile")
+});
+
 struct CachedResponse {
     status: StatusCode,
     headers: HeaderMap,
@@ -188,6 +195,12 @@ async fn chzzk(
     let body = res.bytes().await?;
     tracing::debug!(%status, bytes = body.len(), "upstream response");
 
+    let body = if status.is_success() {
+        rewrite_shared_module_imports(body)
+    } else {
+        body
+    };
+
     let body = match (should_patch, status.is_success()) {
         (true, true) => patch_player_bundle(&player_link, body),
         (true, false) => {
@@ -214,6 +227,23 @@ async fn chzzk(
     }
 
     Ok(cached.into_response())
+}
+
+fn rewrite_shared_module_imports(body: Bytes) -> Bytes {
+    let Ok(text) = std::str::from_utf8(&body) else {
+        return body;
+    };
+
+    // 클립 편집기 등의 index 역참조는 패치 서버에 남기고 공통 모듈 URL만 통일
+    match SHARED_MODULE_IMPORTS.replace_all(text, |caps: &regex::Captures| {
+        format!(
+            "{}{}{UPSTREAM_PREFIX}{}{}",
+            &caps[1], &caps[2], &caps[3], &caps[4]
+        )
+    }) {
+        Cow::Borrowed(_) => body,
+        Cow::Owned(rewritten) => rewritten.into(),
+    }
 }
 
 fn patch_player_bundle(player_link: &str, body: Bytes) -> Bytes {
@@ -264,5 +294,52 @@ where
 {
     fn from(err: E) -> Self {
         Self(err.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_imports_use_upstream_for_static_and_dynamic_loading() {
+        let source = r#"import{s as e}from"./rolldown-runtime-CJJwijRH.js";
+import { x } from './common-vendor-pcHQV1G2.js';
+import "./player-vendor-BYg0wCyN.js";
+import(`./vendor-DQYi7KBW.js`);
+import ( './date-vendor-DhkCJ9xZ.js' );"#;
+        let expected = source.replace("./", UPSTREAM_PREFIX);
+        let rewritten = rewrite_shared_module_imports(Bytes::from_static(source.as_bytes()));
+
+        assert_eq!(rewritten.as_ref(), expected.as_bytes());
+        assert_eq!(rewrite_shared_module_imports(rewritten.clone()), rewritten);
+    }
+
+    #[test]
+    fn application_chunks_and_preload_keys_keep_their_paths() {
+        let source = r#"import{A as y}from"./index-C4sif-4p.js";
+import(`./clipEditor-mBXHumwk.js`);
+import(`./strings-ko_kr-CYa8lLdQ.js`);
+const deps=["static/js/vendor-DQYi7KBW.js","static/css/vendor-DVDNLy6N.css"];
+const path="./vendor-DQYi7KBW.js";
+import(`./vendor-${version}.js`);"#;
+        let body = Bytes::from_static(source.as_bytes());
+
+        assert_eq!(rewrite_shared_module_imports(body.clone()), body);
+    }
+
+    #[test]
+    fn lazy_chunk_shares_vendor_url_with_index_and_keeps_index_reference() {
+        let index = rewrite_shared_module_imports(Bytes::from_static(
+            br#"import{x}from"./vendor-DQYi7KBW.js";import(`./clipEditor-mBXHumwk.js`);"#,
+        ));
+        let editor = rewrite_shared_module_imports(Bytes::from_static(
+            br#"import{x}from"./vendor-DQYi7KBW.js";import{y}from"./index-C4sif-4p.js";"#,
+        ));
+        let vendor_import = format!("import{{x}}from\"{UPSTREAM_PREFIX}vendor-DQYi7KBW.js\";");
+
+        assert!(index.starts_with(vendor_import.as_bytes()));
+        assert!(editor.starts_with(vendor_import.as_bytes()));
+        assert!(editor.ends_with(br#"import{y}from"./index-C4sif-4p.js";"#));
     }
 }
