@@ -59,7 +59,7 @@ struct Patch {
     replacement: &'static str,
 }
 
-static PLAYER_PATCHES: LazyLock<[Patch; 9]> = LazyLock::new(|| {
+static PLAYER_PATCHES: LazyLock<[Patch; 10]> = LazyLock::new(|| {
     [
         ("p2p", r#"(?-u)`p2pPath`"#, "`p2p`"),
         (
@@ -101,6 +101,11 @@ static PLAYER_PATCHES: LazyLock<[Patch; 9]> = LazyLock::new(|| {
             "no_tunnel",
             r#"(?-u)=[[:alnum:]_$]+\(\)([;,][[:alnum:]_$]+\?\.addEventListener\(`error`,\(\{originUrl:)"#,
             "=void 0$1",
+        ),
+        (
+            "pre_ad",
+            r#"(?-u)(let ([[:alnum:]_$]+)=[[:alnum:]_$]+=>\{[[:print:]]{0,80}?complete: \$\{[[:alnum:]_$]+\}`[[:print:]]{0,500}?;)(try\{[[:alnum:]_$]+\.info\(`\$\{[[:alnum:]_$]+\} Ads Apply tunneling\? )"#,
+            "${1}${2}(`NO_ADS`);return;${3}",
         ),
     ]
     .map(|(name, pattern, replacement)| Patch {
