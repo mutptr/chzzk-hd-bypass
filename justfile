@@ -1,5 +1,5 @@
 name := "chzzk"
-target := "aarch64-unknown-linux-gnu"
+target := "aarch64-unknown-linux-musl"
 host := "oracle"
 remote := "~/server"
 
