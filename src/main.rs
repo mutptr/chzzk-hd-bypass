@@ -12,6 +12,7 @@ use regex::Regex;
 use reqwest::{Client, StatusCode, header};
 use std::{
     borrow::Cow,
+    net::{Ipv4Addr, SocketAddrV4},
     num::NonZeroUsize,
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
@@ -19,7 +20,7 @@ use std::{
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-const LISTEN_ADDR: &str = "0.0.0.0:3000";
+const LISTEN_ADDR: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 3000);
 const UPSTREAM_PREFIX: &str = "https://ssl.pstatic.net/static/nng/glive/resource/p/static/js/";
 const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(10);
 const CACHE_CAP: NonZeroUsize = NonZeroUsize::new(32).unwrap();
