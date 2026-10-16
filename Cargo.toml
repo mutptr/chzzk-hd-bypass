@@ -14,8 +14,6 @@ regex = "1.13.1"
 reqwest = { version = "0.13.5", features = [
     "gzip",
     "brotli",
-    "zstd",
-    "deflate",
 ] }
 tokio = { version = "1.53.3", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["cors"] }
